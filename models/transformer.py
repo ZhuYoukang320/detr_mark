@@ -47,15 +47,16 @@ class Transformer(nn.Module):
     def forward(self, src, mask, query_embed, pos_embed):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
-        src = src.flatten(2).permute(2, 0, 1)
-        pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
-        query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
-        mask = mask.flatten(1)
+        src = src.flatten(2).permute(2, 0, 1)# [L,B,C]
+        pos_embed = pos_embed.flatten(2).permute(2, 0, 1)# [L,B,C]
+        query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)# [nQ,B,C]
+        mask = mask.flatten(1)#[B,L]
 
         tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)# [L,B,C]
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask,
-                          pos=pos_embed, query_pos=query_embed)
+                          pos=pos_embed, query_pos=query_embed)#[ndecode_layer,nquery,B,C]
+        # [ndecode_layer,B,nQuery,C]，ndecode_layer用于每层 解码器输出auxloss
         return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
 
 
@@ -210,10 +211,10 @@ class TransformerDecoderLayer(nn.Module):
         return tensor if pos is None else tensor + pos
 
     def forward_post(self, tgt, memory,
-                     tgt_mask: Optional[Tensor] = None,
-                     memory_mask: Optional[Tensor] = None,
-                     tgt_key_padding_mask: Optional[Tensor] = None,
-                     memory_key_padding_mask: Optional[Tensor] = None,
+                     tgt_mask: Optional[Tensor] = None,#解码器第一个多头注意力的时序掩码，detr中不需要，图像输出不需要一步步来
+                     memory_mask: Optional[Tensor] = None,#解码器第二个多头注意力的时序掩码，detr中不需要
+                     tgt_key_padding_mask: Optional[Tensor] = None,#解码器第一个多头注意力的key掩码，detr中不需要，因为都固定出100个框
+                     memory_key_padding_mask: Optional[Tensor] = None,#解码器第二个多头注意力的key掩码
                      pos: Optional[Tensor] = None,
                      query_pos: Optional[Tensor] = None):
         q = k = self.with_pos_embed(tgt, query_pos)
@@ -222,7 +223,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
         tgt2 = self.multihead_attn(query=self.with_pos_embed(tgt, query_pos),
-                                   key=self.with_pos_embed(memory, pos),
+                                   key=self.with_pos_embed(memory, pos),# 这里key带上了位置编码
                                    value=memory, attn_mask=memory_mask,
                                    key_padding_mask=memory_key_padding_mask)[0]
         tgt = tgt + self.dropout2(tgt2)

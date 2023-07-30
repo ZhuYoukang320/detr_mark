@@ -61,7 +61,9 @@ def get_args_parser():
                         help="Train segmentation head if the flag is provided")
 
     # Loss
-    parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
+    # parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
+    #                     help="Disables auxiliary decoding losses (loss at each layer)")
+    parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_true',
                         help="Disables auxiliary decoding losses (loss at each layer)")
     # * Matcher
     parser.add_argument('--set_cost_class', default=1, type=float,
@@ -80,7 +82,7 @@ def get_args_parser():
 
     # dataset parameters
     parser.add_argument('--dataset_file', default='coco')
-    parser.add_argument('--coco_path', type=str)
+    parser.add_argument('--coco_path', type=str,default='/home/zyk/datasets/coco')
     parser.add_argument('--coco_panoptic_path', type=str)
     parser.add_argument('--remove_difficult', action='store_true')
 
@@ -103,7 +105,7 @@ def get_args_parser():
 
 
 def main(args):
-    utils.init_distributed_mode(args)
+    utils.init_distributed_mode(args)#多卡训练配置
     print("git:\n  {}\n".format(utils.get_sha()))
 
     if args.frozen_weights is not None:
@@ -113,21 +115,20 @@ def main(args):
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
-    seed = args.seed + utils.get_rank()
+    seed = args.seed + utils.get_rank()#TODO dist.get_rank()可以获取节点id
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
     model, criterion, postprocessors = build_model(args)
     model.to(device)
-
     model_without_ddp = model
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('number of params:', n_parameters)
-
+    # 参数分为backbone和非backbone两类
     param_dicts = [
         {"params": [p for n, p in model_without_ddp.named_parameters() if "backbone" not in n and p.requires_grad]},
         {

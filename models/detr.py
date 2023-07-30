@@ -57,18 +57,22 @@ class DETR(nn.Module):
                                 dictionnaries containing the two above keys for each decoder layer.
         """
         if isinstance(samples, (list, torch.Tensor)):
+            # 封装输入，其中NestedTensor.tensors [b,c,h,w]，
+            # NestedTensor.mask[b, h, w]，为batch内数据的
             samples = nested_tensor_from_tensor_list(samples)
-        features, pos = self.backbone(samples)
-
-        src, mask = features[-1].decompose()
+        # [b,c,h,w],[b,nd,h,w]
+        features, pos = self.backbone(samples)# 各尺度输出和位置编码
+        # [b,c,h,w],[b,h,w]
+        src, mask = features[-1].decompose()#只用最深层特征？
         assert mask is not None
+        # transformer的输出 [ndecode_layer,B,nQurey,C]
         hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
-
-        outputs_class = self.class_embed(hs)
-        outputs_coord = self.bbox_embed(hs).sigmoid()
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+        outputs_class = self.class_embed(hs)# [ndecode_layer,B,nQurey,nc+1]
+        outputs_coord = self.bbox_embed(hs).sigmoid()#[ndecode_layer,B,nQurey,4],输出归一化的[x,y,w,h]
+        #[B,nQurey,nc+1],[B,nQurey,4]
+        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}# 最后一个解码层的输出
         if self.aux_loss:
-            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)# 解码器中间结果输出
         return out
 
     @torch.jit.unused

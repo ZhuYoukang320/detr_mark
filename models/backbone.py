@@ -66,13 +66,14 @@ class BackboneBase(nn.Module):
             return_layers = {"layer1": "0", "layer2": "1", "layer3": "2", "layer4": "3"}
         else:
             return_layers = {'layer4': "0"}
+        # 从resnet官方实现中取需要输出取出尺度，目标检测任务中仅取出backbone最深层layer4
         self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
         self.num_channels = num_channels
 
     def forward(self, tensor_list: NestedTensor):
         xs = self.body(tensor_list.tensors)
         out: Dict[str, NestedTensor] = {}
-        for name, x in xs.items():
+        for name, x in xs.items():# 如果是分割任务,则对掩码下采样到每个尺度的输出
             m = tensor_list.mask
             assert m is not None
             mask = F.interpolate(m[None].float(), size=x.shape[-2:]).to(torch.bool)[0]
@@ -88,7 +89,8 @@ class Backbone(BackboneBase):
                  dilation: bool):
         backbone = getattr(torchvision.models, name)(
             replace_stride_with_dilation=[False, False, dilation],
-            pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d)
+            pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d)#rest50等backbone
+        #torchvision.models.resnet50()
         num_channels = 512 if name in ('resnet18', 'resnet34') else 2048
         super().__init__(backbone, train_backbone, num_channels, return_interm_layers)
 
@@ -110,7 +112,7 @@ class Joiner(nn.Sequential):
 
 
 def build_backbone(args):
-    position_embedding = build_position_encoding(args)
+    position_embedding = build_position_encoding(args)#位置编码
     train_backbone = args.lr_backbone > 0
     return_interm_layers = args.masks
     backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
