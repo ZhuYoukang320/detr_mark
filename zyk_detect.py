@@ -106,7 +106,7 @@ if __name__ == '__main__':
     std = torch.tensor([0.229, 0.224, 0.225]).reshape((1, 1, -1))
     device = torch.device('cuda')
     model = model.to(device)
-    cap = cv2.VideoCapture('samples/sample.avi')
+    cap = cv2.VideoCapture('samples/palace.mp4')
     nc = 91
     if cap.isOpened():
         while True:
